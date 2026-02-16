@@ -54,22 +54,28 @@
                         <div class="mt-4">
                             <div class="btn-group w-100">
                                 <?php if ($module['active']): ?>
-                                    <a href="<?= base_url('system/modules/deactivate/' . $slug) ?>" class="btn btn-sm btn-outline-danger w-75">
-                                        <i class="fas fa-power-off"></i> Desativar
-                                    </a>
+                                    <form action="<?= base_url('system/modules/deactivate/' . $slug) ?>" method="POST" class="w-75">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger w-100">
+                                            <i class="fas fa-power-off"></i> Desativar
+                                        </button>
+                                    </form>
                                     <button class="btn btn-sm btn-light w-25" title="Não é possível excluir um módulo ativo" disabled>
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 <?php else: ?>
-                                    <a href="<?= base_url('system/modules/activate/' . $slug) ?>" class="btn btn-sm btn-success w-75">
-                                        <i class="fas fa-check"></i> Ativar
-                                    </a>
-                                    <a href="<?= base_url('system/modules/delete/' . $slug) ?>" 
-                                       class="btn btn-sm btn-outline-danger w-25" 
-                                       onclick="return confirm('Tem certeza que deseja excluir este módulo permanentemente?')"
-                                       title="Excluir Módulo">
-                                        <i class="fas fa-trash"></i>
-                                    </a>
+                                    <form action="<?= base_url('system/modules/activate/' . $slug) ?>" method="POST" class="w-75">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-sm btn-success w-100">
+                                            <i class="fas fa-check"></i> Ativar
+                                        </button>
+                                    </form>
+                                    <form action="<?= base_url('system/modules/delete/' . $slug) ?>" method="POST" class="w-25" onsubmit="return confirm('Tem certeza que deseja excluir este módulo permanentemente?')">
+                                        <?= csrf_field() ?>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger w-100" title="Excluir Módulo">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -137,6 +143,15 @@ function installFromMarketplace(url) {
         form.method = 'POST';
         form.action = '<?= base_url('system/modules/install') ?>';
         
+        const csrfName = '<?= csrf_token() ?>';
+        const csrfHash = '<?= csrf_hash() ?>';
+
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = csrfName;
+        csrfInput.value = csrfHash;
+        form.appendChild(csrfInput);
+
         const input = document.createElement('input');
         input.type = 'hidden';
         input.name = 'url';

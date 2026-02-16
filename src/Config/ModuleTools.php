@@ -47,12 +47,15 @@ class ModuleTools extends BaseConfig
      * Private network ranges that should not be accessible
      */
     public array $blacklistedIpRanges = [
-        '10.0.0.0/8',       // Private network
-        '172.16.0.0/12',    // Private network
-        '192.168.0.0/16',   // Private network
-        '127.0.0.0/8',      // Loopback
-        '169.254.0.0/16',   // Link-local
+        '10.0.0.0/8',       // Private network IPv4
+        '172.16.0.0/12',    // Private network IPv4
+        '192.168.0.0/16',   // Private network IPv4
+        '127.0.0.0/8',      // Loopback IPv4
+        '169.254.0.0/16',   // Link-local IPv4
         '0.0.0.0/8',        // Current network
+        '::1/128',          // Loopback IPv6
+        'fc00::/7',         // Unique Local Address IPv6
+        'fe80::/10',        // Link-local IPv6
     ];
 
     /**

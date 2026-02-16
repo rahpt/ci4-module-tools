@@ -10,7 +10,8 @@
         "development",
         "tools",
         "generator",
-        "marketplace"
+        "marketplace",
+        "rahpt"
     ],
     "homepage": "https://github.com/rahpt/ci4-module-tools",
     "support": {
@@ -21,7 +22,7 @@
     "authors": [
         {
             "name": "Rahpt",
-            "email": "dev@example.com",
+            "email": "ci4-module@rah.pt",
             "homepage": "https://github.com/rahpt",
             "role": "Developer"
         }

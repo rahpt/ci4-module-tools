@@ -1,6 +1,6 @@
 # CodeIgniter 4 Module Development Tools
 
-[![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)](https://github.com/rahpt/ci4-module-tools)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/rahpt/ci4-module-tools)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PHP](https://img.shields.io/badge/php-%3E%3D8.1-brightgreen.svg)](https://php.net)
 
@@ -386,6 +386,19 @@ composer test
 
 ---
 
+## 🕒 Histórico de Versões
+
+### [1.1.0] - 2026-02-16
+- **Segurança (CSRF)**: Migração de todas as ações sensíveis do `ModuleController` (ativar/deactivate/delete) de `GET` para `POST` com proteção CSRF obrigatória.
+- **Segurança (SSRF)**: Melhoria no `SecurityValidator` com blacklist expandida incluindo faixas privadas IPv6.
+- **CLI**: Adicionado comando `module:import-manager` para facilitar a importação do diretório de gerenciamento no projeto.
+- **Melhoria**: Atualização do template do Gerenciador de Módulos com UX aprimorada e suporte a tokens CSRF.
+
+### [1.0.1] - 2026-02-15
+- Versão inicial com Marketplace Local e Gerador de Módulos.
+
+---
+
 ## 📄 Licença
 
 MIT License
@@ -398,5 +411,5 @@ Desenvolvido por **Rahpt**
 
 ---
 
-**Versão**: 1.0.1  
-**Última Atualização**: 2026-02-15
+**Versão**: 1.1.0  
+**Última Atualização**: 2026-02-16

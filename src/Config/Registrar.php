@@ -3,9 +3,7 @@
 namespace Rahpt\Ci4ModuleTools\Config;
 
 /**
- * Registrar for Module Tools
- * 
- * Registers commands and services with CodeIgniter 4
+ * Registrar - Autoconfiguração de componentes do pacote ci4-module-tools no CodeIgniter 4.
  */
 class Registrar
 {
@@ -25,6 +23,7 @@ class Registrar
             'Rahpt\Ci4ModuleTools\Commands\ModuleInstall',
             'Rahpt\Ci4ModuleTools\Commands\ModuleAssets',
             'Rahpt\Ci4ModuleTools\Commands\ModulePublish',
+            'Rahpt\Ci4ModuleTools\Commands\ModuleImportManager',
         ];
     }
 }
