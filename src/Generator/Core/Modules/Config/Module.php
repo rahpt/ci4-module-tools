@@ -18,18 +18,23 @@ class Module extends BaseModule
         return [
             [
                 'label' => 'Sistema',
-                'icon'  => 'fas fa-cogs',
+                'icon' => 'fas fa-cogs',
                 'route' => '#',
                 'items' => [
                     [
                         'label' => 'Gerenciar Módulos',
-                        'icon'  => 'far fa-circle',
+                        'icon' => 'far fa-circle',
                         'route' => 'system/modules'
                     ],
                     [
                         'label' => 'Instalar Novo',
-                        'icon'  => 'far fa-circle',
+                        'icon' => 'far fa-circle',
                         'route' => 'system/modules/install'
+                    ],
+                    [
+                        'label' => 'Configurações',
+                        'icon' => 'fas fa-cog',
+                        'route' => 'system/settings'
                     ],
                 ]
             ]
