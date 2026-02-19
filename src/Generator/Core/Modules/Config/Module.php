@@ -40,4 +40,26 @@ class Module extends BaseModule
             ]
         ];
     }
+
+    public function settings(): array
+    {
+        return [
+            'modules' => [
+                'label' => 'Gerenciador de Módulos',
+                'fields' => [
+                    'local_repository' => [
+                        'type' => 'text',
+                        'label' => 'Repositório Local',
+                        'default' => 'c:/www/mods/Modules',
+                        'helper' => 'Caminho absoluto para busca de novos módulos.'
+                    ],
+                    'debug_mode' => [
+                        'type' => 'boolean',
+                        'label' => 'Modo Debug',
+                        'default' => true
+                    ]
+                ]
+            ]
+        ];
+    }
 }
