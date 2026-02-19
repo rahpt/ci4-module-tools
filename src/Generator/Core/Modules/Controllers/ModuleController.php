@@ -4,7 +4,7 @@ namespace App\Modules\Modules\Controllers;
 
 use App\Controllers\BaseController;
 use Rahpt\Ci4Module\ModuleRegistry;
-use App\Modules\Modules\Support\PackageInstaller;
+use Rahpt\Ci4ModuleTools\Support\PackageInstaller;
 use Rahpt\Ci4ModuleTheme\ThemeManager;
 
 class ModuleController extends BaseController
@@ -16,17 +16,23 @@ class ModuleController extends BaseController
     {
         $registry = service('modules');
         $marketplaceModules = [];
-        
+
+        // 1. Check for dedicated Marketplace Module (Database driven)
         $marketplaceModelClass = 'App\Modules\Marketplace\Models\MarketplaceModuleModel';
         if (class_exists($marketplaceModelClass)) {
             $marketplaceModel = new $marketplaceModelClass();
             $marketplaceModules = $marketplaceModel->getActiveModules();
         }
-        
+
+        // 2. If empty, fallback to Local Repository Scanner (File system driven)
+        if (empty($marketplaceModules)) {
+            $marketplaceModules = \Rahpt\Ci4ModuleTools\Support\LocalMarketplaceScanner::scan();
+        }
+
         return view('App\Modules\Modules\Views\index', [
             'modules' => $registry->getAvailableModules(),
             'marketplaceModules' => $marketplaceModules,
-            'layout'  => ThemeManager::getModuleLayout('Modules')
+            'layout' => ThemeManager::getModuleLayout('modules')
         ]);
     }
 
@@ -64,8 +70,8 @@ class ModuleController extends BaseController
     public function processInstall()
     {
         $url = $this->request->getPost('url');
-        
-        if (PackageInstaller::installFromUrl($url)) {
+
+        if (PackageInstaller::install($url)) {
             return redirect()->to(base_url('system/modules'))->with('message', 'Module installed successfully.');
         }
 
@@ -89,10 +95,23 @@ class ModuleController extends BaseController
         }
 
         $modulePath = FCPATH . '../app/Modules/' . ucfirst($slug);
-        
+        $moduleClass = "App\\Modules\\" . ucfirst($slug) . "\\Config\\Module";
+
         if (is_dir($modulePath)) {
+            // Run uninstall hook if class exists
+            if (class_exists($moduleClass)) {
+                $instance = new $moduleClass();
+                if (method_exists($instance, 'uninstall')) {
+                    try {
+                        $instance->uninstall();
+                    } catch (\Exception $e) {
+                        log_message('error', "Failed to run uninstall() for {$slug}: " . $e->getMessage());
+                    }
+                }
+            }
+
             $this->deleteDirectory($modulePath);
-            return redirect()->to(base_url('system/modules'))->with('message', "Module {$slug} uninstalled successfully.");
+            return redirect()->to(base_url('system/modules'))->with('message', "Module {$slug} uninstalled successfully (including database cleanup).");
         }
 
         return redirect()->back()->with('error', "Failed to find module directory for {$slug}.");
@@ -101,12 +120,17 @@ class ModuleController extends BaseController
     /**
      * Recursively delete a directory.
      */
-    private function deleteDirectory($dir) {
-        if (!file_exists($dir)) return true;
-        if (!is_dir($dir)) return unlink($dir);
+    private function deleteDirectory($dir)
+    {
+        if (!file_exists($dir))
+            return true;
+        if (!is_dir($dir))
+            return unlink($dir);
         foreach (scandir($dir) as $item) {
-            if ($item == '.' || $item == '..') continue;
-            if (!$this->deleteDirectory($dir . DIRECTORY_SEPARATOR . $item)) return false;
+            if ($item == '.' || $item == '..')
+                continue;
+            if (!$this->deleteDirectory($dir . DIRECTORY_SEPARATOR . $item))
+                return false;
         }
         return rmdir($dir);
     }

@@ -10,7 +10,7 @@ class ModuleTools extends BaseConfig
      * Local repository path for development modules
      * Can be absolute or relative to ROOTPATH
      */
-    public string $localRepository = 'Modules';
+    public string $localRepository = 'c:/www/mods/Modules';
 
     /**
      * Maximum ZIP file size in bytes (50MB default)
@@ -72,13 +72,42 @@ class ModuleTools extends BaseConfig
     public function getLocalRepositoryPath(): string
     {
         $path = $this->localRepository;
-        
+
+        if (function_exists('setting')) {
+            $setPath = setting('ModuleTools.localRepository');
+            if ($setPath !== null) {
+                $path = $setPath;
+            }
+        }
+
         // If not absolute, make it relative to ROOTPATH
         if (!$this->isAbsolutePath($path)) {
             $path = ROOTPATH . $path;
         }
-        
-        return rtrim($path, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
+        return rtrim($path, '\\/') . DIRECTORY_SEPARATOR;
+    }
+
+    /**
+     * Checks if debug mode is enabled (supports settings override)
+     */
+    public function isDebugEnabled(): bool
+    {
+        if (function_exists('setting')) {
+            return (bool) (setting('ModuleTools.debugMode') ?? $this->debugMode);
+        }
+        return $this->debugMode;
+    }
+
+    /**
+     * Checks if remote install is allowed (supports settings override)
+     */
+    public function isRemoteInstallAllowed(): bool
+    {
+        if (function_exists('setting')) {
+            return (bool) (setting('ModuleTools.allowRemoteInstall') ?? $this->allowRemoteInstall);
+        }
+        return $this->allowRemoteInstall;
     }
 
     /**
@@ -86,16 +115,16 @@ class ModuleTools extends BaseConfig
      */
     private function isAbsolutePath(string $path): bool
     {
-        // Windows absolute path (C:\, D:\, etc)
-        if (preg_match('/^[A-Z]:\\\\/i', $path)) {
+        // Windows absolute path (C:\, D:\, or C:/, D:/)
+        if (preg_match('/^[A-Z]:[\\\\\/]/i', $path)) {
             return true;
         }
-        
+
         // Unix absolute path (starts with /)
         if (strpos($path, '/') === 0) {
             return true;
         }
-        
+
         return false;
     }
 }

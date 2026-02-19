@@ -54,25 +54,30 @@
                         <div class="mt-4">
                             <div class="btn-group w-100">
                                 <?php if ($module['active']): ?>
-                                    <form action="<?= base_url('system/modules/deactivate/' . $slug) ?>" method="POST" class="w-75">
+                                    <form action="<?= base_url('system/modules/deactivate/' . $slug) ?>" method="POST"
+                                        class="w-75">
                                         <?= csrf_field() ?>
                                         <button type="submit" class="btn btn-sm btn-outline-danger w-100">
                                             <i class="fas fa-power-off"></i> Desativar
                                         </button>
                                     </form>
-                                    <button class="btn btn-sm btn-light w-25" title="Não é possível excluir um módulo ativo" disabled>
+                                    <button class="btn btn-sm btn-light w-25" title="Não é possível excluir um módulo ativo"
+                                        disabled>
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 <?php else: ?>
-                                    <form action="<?= base_url('system/modules/activate/' . $slug) ?>" method="POST" class="w-75">
+                                    <form action="<?= base_url('system/modules/activate/' . $slug) ?>" method="POST"
+                                        class="w-75">
                                         <?= csrf_field() ?>
                                         <button type="submit" class="btn btn-sm btn-success w-100">
                                             <i class="fas fa-check"></i> Ativar
                                         </button>
                                     </form>
-                                    <form action="<?= base_url('system/modules/delete/' . $slug) ?>" method="POST" class="w-25" onsubmit="return confirm('Tem certeza que deseja excluir este módulo permanentemente?')">
+                                    <form action="<?= base_url('system/modules/delete/' . $slug) ?>" method="POST" class="w-25"
+                                        onsubmit="return confirm('Tem certeza que deseja excluir este módulo permanentemente?')">
                                         <?= csrf_field() ?>
-                                        <button type="submit" class="btn btn-sm btn-outline-danger w-100" title="Excluir Módulo">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger w-100"
+                                            title="Excluir Módulo">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </form>
@@ -89,21 +94,23 @@
 
     <h4 class="mt-5 mb-3 font-weight-bold"><i class="fas fa-store mr-2"></i> Marketplace Local</h4>
     <p class="text-muted small mb-4">Módulos disponíveis para download no servidor local de marketplace.</p>
-    
+
     <div class="row">
         <?php if (!empty($marketplaceModules)): ?>
             <?php foreach ($marketplaceModules as $mModule): ?>
-                <?php 
-                    $isInstalled = isset($modules[$mModule['slug']]) || isset($modules[strtolower($mModule['slug'])]);
+                <?php
+                $isInstalled = isset($modules[$mModule['slug']]) || isset($modules[strtolower($mModule['slug'])]);
                 ?>
                 <div class="col-xl-3 col-md-6 mb-4">
                     <div class="card shadow h-100 border-0 bg-light">
                         <div class="card-body p-3">
                             <div class="d-flex align-items-center mb-3">
                                 <?php if ($mModule['icon_path']): ?>
-                                    <img src="<?= base_url($mModule['icon_path']) ?>" class="rounded mr-3" style="width: 40px; height: 40px; object-fit: cover;">
+                                    <img src="<?= base_url($mModule['icon_path']) ?>" class="rounded mr-3"
+                                        style="width: 40px; height: 40px; object-fit: cover;">
                                 <?php else: ?>
-                                    <div class="bg-white rounded mr-3 d-flex align-items-center justify-content-center border" style="width: 40px; height: 40px;">
+                                    <div class="bg-white rounded mr-3 d-flex align-items-center justify-content-center border"
+                                        style="width: 40px; height: 40px;">
                                         <i class="fas fa-cloud text-primary"></i>
                                     </div>
                                 <?php endif; ?>
@@ -112,16 +119,18 @@
                                     <small class="text-muted">v<?= $mModule['version'] ?></small>
                                 </div>
                             </div>
-                            
+
                             <?php if ($isInstalled): ?>
                                 <span class="badge badge-success mb-2"><i class="fas fa-check-circle mr-1"></i> Já Instalado</span>
                             <?php else: ?>
-                                <button class="btn btn-sm btn-primary btn-block mb-2" onclick="installFromMarketplace('<?= $mModule['zip_path'] ?>')">
+                                <button class="btn btn-sm btn-primary btn-block mb-2"
+                                    onclick="installFromMarketplace('<?= $mModule['zip_path'] ?>')">
                                     <i class="fas fa-download mr-1"></i> Baixar e Instalar
                                 </button>
                             <?php endif; ?>
-                            
-                            <a href="<?= base_url('marketplace/view/' . $mModule['slug']) ?>" target="_blank" class="btn btn-xs btn-link btn-block text-muted">
+
+                            <a href="<?= base_url('marketplace/view/' . $mModule['slug']) ?>" target="_blank"
+                                class="btn btn-xs btn-link btn-block text-muted">
                                 Ver detalhes no Marketplace <i class="fas fa-external-link-alt ml-1"></i>
                             </a>
                         </div>
@@ -137,31 +146,31 @@
 </div>
 
 <script>
-function installFromMarketplace(url) {
-    if (confirm('Deseja baixar e instalar este módulo agora?')) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '<?= base_url('system/modules/install') ?>';
-        
-        const csrfName = '<?= csrf_token() ?>';
-        const csrfHash = '<?= csrf_hash() ?>';
+    function installFromMarketplace(source) {
+        if (confirm('Deseja baixar e instalar este módulo agora?')) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '<?= base_url('system/modules/install') ?>';
 
-        const csrfInput = document.createElement('input');
-        csrfInput.type = 'hidden';
-        csrfInput.name = csrfName;
-        csrfInput.value = csrfHash;
-        form.appendChild(csrfInput);
+            const csrfName = '<?= csrf_token() ?>';
+            const csrfHash = '<?= csrf_hash() ?>';
 
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'url';
-        input.value = '<?= base_url() ?>' + url;
-        
-        form.appendChild(input);
-        document.body.appendChild(form);
-        form.submit();
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = csrfName;
+            csrfInput.value = csrfHash;
+            form.appendChild(csrfInput);
+
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'url';
+            input.value = source;
+
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
     }
-}
 </script>
 
 <?= $this->endSection() ?>
