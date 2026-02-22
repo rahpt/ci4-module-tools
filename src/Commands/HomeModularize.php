@@ -61,7 +61,6 @@ class HomeModularize extends BaseCommand
             // Adicionar lógica de Login/Dashboard se não existir
             if (strpos($content, 'auth()->loggedIn()') === false) {
                 $loginSnippet = <<<'EOD'
-            <li class="menu-item hidden"><a href="#">Home</a></li>
             <?php if (auth()->loggedIn()): ?>
                 <li class="menu-item hidden"><a href="<?= base_url('dashboard') ?>">Dashboard</a></li>
                 <li class="menu-item hidden"><a href="<?= base_url('logout') ?>" style="color: #dc3545;">Sair</a></li>
@@ -69,7 +68,14 @@ class HomeModularize extends BaseCommand
                 <li class="menu-item hidden"><a href="<?= base_url('login') ?>">Login</a></li>
             <?php endif; ?>
 EOD;
-                $content = str_replace('<li class="menu-item hidden"><a href="#">Home</a></li>', $loginSnippet, $content);
+                // Busca o item Home exato do template original
+                $pattern = '/<li class="menu-item hidden"><a href="#">Home<\/a><\/li>/';
+                if (preg_match($pattern, $content)) {
+                    $content = preg_replace($pattern, '$0' . "\n" . $loginSnippet, $content);
+                } else {
+                    // Fallback se o link Home não for exatamente igual (ex: sem <li>)
+                    $content = str_replace('<li class="menu-item hidden"><a href="#">Home</a></li>', '<li class="menu-item hidden"><a href="#">Home</a></li>' . "\n" . $loginSnippet, $content);
+                }
             }
 
             file_put_contents($targetView, $content);
