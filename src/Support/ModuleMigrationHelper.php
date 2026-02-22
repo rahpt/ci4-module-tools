@@ -11,7 +11,7 @@ class ModuleMigrationHelper
     {
         $db = Database::connect();
         $tableExists = ModuleTableUtils::tableExists($tableName);
-        
+
         if (!$tableExists) {
             CLI::write("⚠ Table '{$tableName}' does not exist. Generating base migration.", 'yellow');
             $content = self::getContentEmpty($module, $tableName);
@@ -25,15 +25,15 @@ class ModuleMigrationHelper
 
         file_put_contents($filePath . $fileName, $content);
         CLI::write("✔ Migration created: Modules/{$module}/Database/Migrations/{$fileName}", 'green');
-        
+
         return $tableExists;
     }
 
     protected static function getContentEmpty(string $module, string $tableName): string
     {
         $forgeFields = [
-            'id'         => ['type' => 'INT', 'null' => false, 'unsigned' => true, 'auto_increment' => true],
-            'name'       => ['type' => 'VARCHAR', 'null' => false, 'constraint' => 100],
+            'id' => ['type' => 'INT', 'null' => false, 'unsigned' => true, 'auto_increment' => true],
+            'name' => ['type' => 'VARCHAR', 'null' => false, 'constraint' => 100],
             'created_at' => ['type' => 'DATETIME', 'null' => true],
             'updated_at' => ['type' => 'DATETIME', 'null' => true],
             'deleted_at' => ['type' => 'DATETIME', 'null' => true],
@@ -42,9 +42,9 @@ class ModuleMigrationHelper
         return TemplateHelper::generateContentFromTemplate(
             TemplateHelper::getTemplatePath('Migration.tpl'),
             [
-                'ModuleName'  => ucfirst($module),
-                'TableName'   => strtolower($tableName),
-                'Fields'      => ModuleTableUtils::formatArrayExport($forgeFields),
+                'ModuleName' => ucfirst($module),
+                'TableName' => strtolower($tableName),
+                'Fields' => ModuleTableUtils::formatArrayExport($forgeFields),
                 'PrimaryKeys' => ModuleTableUtils::formatPrimaryKeys(['id']),
             ]
         );
@@ -79,11 +79,33 @@ class ModuleMigrationHelper
         return TemplateHelper::generateContentFromTemplate(
             TemplateHelper::getTemplatePath('Migration.tpl'),
             [
-                'ModuleName'  => ucfirst($module),
-                'TableName'   => strtolower($tableName),
-                'Fields'      => ModuleTableUtils::formatArrayExport($forgeFields),
+                'ModuleName' => ucfirst($module),
+                'TableName' => strtolower($tableName),
+                'Fields' => ModuleTableUtils::formatArrayExport($forgeFields),
                 'PrimaryKeys' => ModuleTableUtils::formatPrimaryKeys($primaryKeys),
             ]
         );
+    }
+
+    /**
+     * Executes migrations for a specific module namespace.
+     */
+    public static function runMigrations(string $namespace): bool
+    {
+        try {
+            $migrations = \Config\Services::migrations();
+            $migrations->setNamespace($namespace);
+
+            if ($migrations->latest()) {
+                log_message('info', "ModuleMigrationHelper: Migrations executed for {$namespace}");
+                return true;
+            }
+
+            log_message('debug', "ModuleMigrationHelper: No migrations to run for {$namespace}");
+            return true;
+        } catch (\Throwable $e) {
+            log_message('error', "ModuleMigrationHelper: Failed to run migrations for {$namespace}: " . $e->getMessage());
+            return false;
+        }
     }
 }

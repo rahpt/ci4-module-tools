@@ -76,6 +76,10 @@ class PackageInstaller
                     } else {
                         log_message('debug', "PackageInstaller: Method install() not found in {$moduleClass}");
                     }
+
+                    // Automatically run migrations if they exist
+                    log_message('debug', "PackageInstaller: Running migrations for {$namespace}");
+                    ModuleMigrationHelper::runMigrations($namespace);
                 } else {
                     log_message('error', "PackageInstaller: Class {$moduleClass} NOT found even after requiring file.");
                 }
@@ -142,6 +146,9 @@ class PackageInstaller
                                     log_message('error', "PackageInstaller: Failed to run install() for {$slug}: " . $e->getMessage());
                                 }
                             }
+
+                            // Automatically run migrations if they exist
+                            ModuleMigrationHelper::runMigrations($namespace);
                         }
                     }
                 }
