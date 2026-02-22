@@ -144,14 +144,11 @@ PHP;
         $readme = "# Módulo Home\n\nGerado automaticamente pelo comando `module:modularize-home`.";
         file_put_contents($modulePath . 'README.md', $readme);
 
-        // 7. Registrar no modules.json
+        // 7. Registrar e Ativar no modules.json
         $registry = service('modules');
-        $registry->put('home', [
-            'active' => false, // Começa desativado para o usuário ativar via spark
-            'createdAt' => date(DATE_ATOM),
-        ]);
+        $registry->activate('home');
 
-        CLI::write("✔ Módulo Home configurado e registrado com sucesso!", 'black', 'green');
-        CLI::write("👉 Execute 'php spark module:activate home' para assumir o controle da rota raiz.", 'yellow');
+        CLI::write("✔ Módulo Home configurado, registrado e ATIVADO com sucesso!", 'black', 'green');
+        CLI::write("✨ A rota raiz (/) agora é controlada pelo módulo Home.", 'yellow');
     }
 }
