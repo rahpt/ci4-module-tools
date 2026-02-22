@@ -1,6 +1,6 @@
 # CodeIgniter 4 Module Development Tools
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/rahpt/ci4-module-tools)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/rahpt/ci4-module-tools)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PHP](https://img.shields.io/badge/php-%3E%3D8.1-brightgreen.svg)](https://php.net)
 
@@ -13,7 +13,7 @@ Ferramentas de desenvolvimento para o sistema modular CodeIgniter 4. Inclui mark
 - ✅ **Module Marketplace** - Interface web para gerenciar módulos.
 - ✅ **Settings Manager** - Gerenciador centralizado de configurações para todos os módulos.
 - ✅ **Lifecycle Automation** - Execução automática de hooks (`install`, `uninstall`).
-- ✅ **Home Modularization** - Converter o projeto base em um sistema modular instantaneamente.
+- ✅ **Home Modularization** - Converter o projeto base em um sistema modular com auto-ativação.
 - ✅ **Hot-namespace Registration** - Registro imediato de namespaces para execução de migrações sem restart.
 - ✅ **CLI Generators** - Criação rápida de módulos, controladores, migrações e seeders.
 
@@ -26,7 +26,7 @@ O pacote adiciona diversos comandos ao `php spark` para agilizar o desenvolvimen
 ### Gerenciamento de Módulos
 - `module:init-core`: Inicializa os módulos base (Dashboard e gerenciador de módulos).
 - `module:init <Name>`: Cria um novo módulo com estrutura completa (CRUD, Migration, View).
-- `module:modularize-home`: Transforma o controlador `Home.php` e a view `welcome_message.php` em um módulo modular funcional.
+- `module:modularize-home`: Transforma o controlador `Home.php` e a view `welcome_message.php` em um módulo modular funcional com auto-ativação.
 - `module:list`: Lista todos os módulos instalados e seus respectivos status.
 
 ### Ciclo de Vida e Instalação
@@ -37,13 +37,13 @@ O pacote adiciona diversos comandos ao `php spark` para agilizar o desenvolvimen
 
 ---
 
-## 🚀 Novidades na v1.3.0
+## 🚀 Novidades na v1.4.0
 
-### Modularização Automática
-O novo comando `module:modularize-home` permite converter uma instalação limpa do CI4 em modular em segundos, isolando a lógica da Home e injetando suporte nativo ao **Shield** (Login/Logout) automaticamente nas views.
+### Automação Inteligente de Views
+O mecanismo de modularização da Home agora utiliza expressões regulares avançadas para injetar snippets de autenticação (Login/Logout/Dashboard) sem quebrar o layout original, preservando a navegação existente.
 
-### Instalação Core
-O `module:init-core` automatiza a injeção dos módulos fundamentais de administração, garantindo que o seu ecossistema modular esteja pronto para uso imediatamente após a criação do projeto.
+### Ciclo de Vida Completo
+O comando `module:modularize-home` agora realiza a ativação automática do módulo, gerenciando as rotas da aplicação central instantaneamente.
 
 ---
 
@@ -77,16 +77,19 @@ class ModuleTools extends BaseModuleTools
 
 ## 📖 Histórico de Versões
 
+### [1.4.0] - 2026-02-22
+- **Novo**: Auto-ativação do módulo Home no comando `module:modularize-home`.
+- **Melhoria**: Novo sistema de injeção de views baseado em regex para maior compatibilidade.
+- **Otimização**: Refatoração interna do registro de status de módulos.
+
 ### [1.3.0] - 2026-02-22
 - **Novo**: Comando `module:modularize-home` para conversão de projetos base.
 - **Novo**: Comando `module:init-core` para setup inicial de Dashboard e Gerenciador.
-- **Melhoria**: Integração profunda com **CodeIgniter Shield** nos geradores de View.
-- **Fix**: Otimização no processo de registro de namespaces em tempo de execução.
+- **Melhoria**: Integração profunda com **CodeIgniter Shield**.
 
 ### [1.2.0] - 2026-02-18
 - **Novo**: Implementado **Settings Manager** para gerenciamento centralizado.
 - **Melhoria**: Suporte a Hooks de Automação: `install()` e `uninstall()`.
-- **UX**: Interface do Gerenciador de Módulos atualizada.
 
 ---
 
@@ -100,5 +103,5 @@ MIT License
 
 Desenvolvido por **Rahpt**  
 
-**Versão**: 1.3.0  
+**Versão**: 1.4.0  
 **Última Atualização**: 2026-02-22
