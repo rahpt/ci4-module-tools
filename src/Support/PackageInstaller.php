@@ -37,6 +37,7 @@ class PackageInstaller
 
         if (is_dir($targetDir)) {
             // Already installed
+            log_message('debug', "PackageInstaller: Module {$slug} already installed locally.");
             return true;
         }
 
@@ -65,6 +66,43 @@ class PackageInstaller
                     log_message('debug', "PackageInstaller: Namespace {$namespace} manually registered for this request.");
 
                     $instance = new $moduleClass();
+
+                    // --- Automatic Dependency Resolution ---
+                    // $require is associative: ['depSlug' => 'versionConstraint']
+                    $dependencies = $instance->require ?? [];
+                    if (!empty($dependencies)) {
+                        $depList = implode(', ', array_keys($dependencies));
+                        log_message('info', "PackageInstaller: Module '{$slug}' requires: [{$depList}]. Resolving...");
+
+                        foreach ($dependencies as $depSlug => $versionConstraint) {
+                            $depFolder = ucfirst($depSlug);
+                            $depTarget = APPPATH . 'Modules' . DIRECTORY_SEPARATOR . $depFolder;
+
+                            if (is_dir($depTarget)) {
+                                log_message('debug', "PackageInstaller: Dependency '{$depSlug}' already installed. Skipping.");
+                                continue;
+                            }
+
+                            log_message('info', "PackageInstaller: Installing dependency '{$depSlug}' (constraint: {$versionConstraint}) for '{$slug}'.");
+
+                            $depInstalled = self::installFromLocal($depSlug);
+
+                            if ($depInstalled) {
+                                log_message('info', "PackageInstaller: Dependency '{$depSlug}' installed successfully.");
+                                // Activate the dependency in modules.json
+                                try {
+                                    $registry = service('modules');
+                                    $registry->activate($depSlug);
+                                    log_message('info', "PackageInstaller: Dependency '{$depSlug}' activated in modules.json.");
+                                } catch (\Throwable $e) {
+                                    log_message('warning', "PackageInstaller: Could not activate dependency '{$depSlug}': " . $e->getMessage());
+                                }
+                            } else {
+                                log_message('error', "PackageInstaller: FAILED to install dependency '{$depSlug}' for '{$slug}'. Source not found in local repository.");
+                            }
+                        }
+                    }
+
                     if (method_exists($instance, 'install')) {
                         try {
                             log_message('debug', "PackageInstaller: Calling install() hook for {$slug}");
@@ -106,8 +144,10 @@ class PackageInstaller
 
         try {
             $content = file_get_contents($url);
-            if (!$content)
+            if (!$content) {
+                log_message('error', "PackageInstaller: Failed to download content from URL: {$url}");
                 return false;
+            }
             file_put_contents($tempFile, $content);
 
             $zip = new \ZipArchive();
@@ -124,6 +164,12 @@ class PackageInstaller
                     array_multisort(array_map('filemtime', $dirs), SORT_DESC, $dirs);
                     $newestDir = $dirs[0];
                     $slug = basename($newestDir);
+
+                    // Check if module is already installed (e.g., if a dependency was already installed)
+                    if (is_dir(APPPATH . 'Modules' . DIRECTORY_SEPARATOR . ucfirst($slug))) {
+                        log_message('debug', "PackageInstaller: Module {$slug} already installed remotely (likely as a dependency).");
+                        return true;
+                    }
 
                     $moduleName = ucfirst($slug);
                     $moduleClass = "App\\Modules\\{$moduleName}\\Config\\Module";

@@ -22,7 +22,7 @@ class ModuleInstall extends BaseCommand
         $module = ucfirst($params[0]);
         $registry = service('modules');
         $availableModules = $registry->getAvailableModules();
-        
+
         if (!isset($availableModules[$module])) {
             CLI::error("Module {$module} not found.");
             return;
@@ -30,12 +30,34 @@ class ModuleInstall extends BaseCommand
 
         $moduleInfo = $availableModules[$module];
 
-        // Validate dependencies
+        // Validate and Install dependencies
         if (isset($moduleInfo['require']) && is_array($moduleInfo['require'])) {
-            foreach ($moduleInfo['require'] as $requiredModule) {
-                if (!isset($availableModules[$requiredModule]) || !($availableModules[$requiredModule]['active'] ?? false)) {
-                    CLI::error("Dependency error: Module '{$requiredModule}' is required by '{$module}' and must be active.");
-                    return;
+            foreach ($moduleInfo['require'] as $requiredPkg => $version) {
+                // Se a chave for numérica, o pacote é o valor. Caso contrário, a chave é o pacote.
+                $package = is_numeric($requiredPkg) ? $version : $requiredPkg;
+
+                // Se o pacote contém '/', tratamos como dependência do Composer
+                if (strpos($package, '/') !== false) {
+                    CLI::write("📦 Checking composer dependency: {$package}...", 'yellow');
+
+                    // Verifica se o pacote já está instalado visualizando o vendor (simplificado)
+                    // Ou simplesmente executa o require que o composer resolve o resto
+                    $composer = 'composer';
+                    // Tenta localizar o composer.phar se o comando 'composer' falhar (opcional)
+
+                    $command = "{$composer} require {$package}";
+                    passthru($command, $returnVar);
+
+                    if ($returnVar !== 0) {
+                        CLI::error("❌ Failed to install composer package: {$package}");
+                        return;
+                    }
+                } else {
+                    // Trata como dependência de outro módulo interno
+                    if (!isset($availableModules[$package]) || !($availableModules[$package]['active'] ?? false)) {
+                        CLI::error("Dependency error: Module '{$package}' is required by '{$module}' and must be active.");
+                        return;
+                    }
                 }
             }
         }
