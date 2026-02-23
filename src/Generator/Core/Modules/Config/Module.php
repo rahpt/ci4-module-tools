@@ -12,6 +12,7 @@ class Module extends BaseModule
     public string $version = '1.0.0';
     public string $theme = 'adminlte';
     public string $routePrefix = 'system/modules';
+    public int $priority = 99;
 
     public function menu(): array
     {
