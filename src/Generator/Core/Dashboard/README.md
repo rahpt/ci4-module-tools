@@ -22,6 +22,13 @@ The **Dashboard** is the command center of your application. It provides the ini
 - **Route**: `/dashboard`
 - **Namespace**: `App\Modules\Dashboard`
 
+### 🔀 Route Disambiguation
+This module implements an automatic routing logic:
+- **Admin Access**: If the user has `admin.access`, they stay in the `/dashboard` view.
+- **Regular User**: If the user lacks admin privileges, they are automatically redirected to `/{uid}/panel`.
+
+This ensures that other modules can link to `/dashboard` safely, and the system will handle the appropriate landing for each user type.
+
 ---
 
 *Part of the Rahpt Core Modular Ecosystem*
