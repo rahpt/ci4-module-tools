@@ -1,6 +1,6 @@
 # CodeIgniter 4 Module Development Tools
 
-[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/rahpt/ci4-module-tools)
+[![Version](https://img.shields.io/badge/version-1.5.1-blue.svg)](https://github.com/rahpt/ci4-module-tools)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PHP](https://img.shields.io/badge/php-%3E%3D8.1-brightgreen.svg)](https://php.net)
 
@@ -77,6 +77,10 @@ class ModuleTools extends BaseModuleTools
 
 ## 📖 Histórico de Versões
 
+### [1.5.1] - 2026-02-26
+- **Fix**: Correção crítica no redirecionamento para novos usuários sem UID gerado.
+- **Melhoria**: Geração automática de UID no momento do primeiro acesso ao Dashboard.
+
 ### [1.5.0] - 2026-02-26
 - **Novo**: Lógica de desambiguação inteligente no gerador de Dashboard (`/dashboard` -> `/ID/panel` para não-admins).
 - **Melhoria**: Documentação técnica expandida nos módulos gerados sobre fluxo de acesso.
@@ -107,5 +111,5 @@ MIT License
 
 Desenvolvido por **Rahpt**  
 
-**Versão**: 1.5.0  
+**Versão**: 1.5.1  
 **Última Atualização**: 2026-02-26
