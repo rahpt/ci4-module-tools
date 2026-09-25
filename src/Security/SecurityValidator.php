@@ -135,15 +135,26 @@ class SecurityValidator
     {
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $filename = $zip->getNameIndex($i);
+            $normalized = str_replace('\\', '/', $filename);
             
             // Check for directory traversal
-            if (strpos($filename, '..') !== false) {
+            if (strpos($normalized, '..') !== false) {
                 throw new Exception('ZIP file contains path traversal attempt: ' . $filename);
             }
             
-            // Check for absolute paths
-            if (strpos($filename, '/') === 0 || preg_match('/^[A-Z]:\\\\/i', $filename)) {
-                throw new Exception('ZIP file contains absolute path: ' . $filename);
+            // Check for absolute paths or drive letters
+            if (str_starts_with($normalized, '/') || preg_match('/^[a-zA-Z]:/i', $filename) || str_starts_with($filename, '\\\\')) {
+                throw new Exception('ZIP file contains absolute or drive-relative path: ' . $filename);
+            }
+
+            // Prohibit symlinks within module archives
+            $opsys = 0;
+            $attr = 0;
+            if ($zip->getExternalAttributesIndex($i, $opsys, $attr)) {
+                // Unix symlink mode is 0120000
+                if ($opsys === \ZipArchive::OPSYS_UNIX && (($attr >> 16) & 0120000) === 0120000) {
+                    throw new Exception('ZIP file contains forbidden symbolic link entry: ' . $filename);
+                }
             }
         }
     }
