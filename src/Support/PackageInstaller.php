@@ -6,18 +6,18 @@ use Rahpt\Ci4ModuleTools\Security\SecurityValidator;
 
 /**
  * PackageInstaller - Handles downloading and extracting modules from remote repositories or local dirs.
- * Enforces secure staging, validation, and atomic deployment.
+ * Enforces transactional staging, integrity verification, atomic deployment, and rollback.
  */
 class PackageInstaller
 {
     /**
      * Installs a module from a local directory or ZIP.
      */
-    public static function install(string $source): bool
+    public static function install(string $source, array $options = []): bool
     {
         // 1. If it's a URL, use remote staging pipeline
         if (filter_var($source, FILTER_VALIDATE_URL)) {
-            return self::installFromUrl($source);
+            return self::installFromUrl($source, $options);
         }
 
         // 2. Otherwise, check if it's a slug in the local repository
@@ -25,7 +25,7 @@ class PackageInstaller
     }
 
     /**
-     * Installs a module from a local path (copying directory).
+     * Installs a module from a local path with transactional rollback.
      */
     public static function installFromLocal(string $slug): bool
     {
@@ -39,104 +39,97 @@ class PackageInstaller
         }
 
         if (is_dir($targetDir)) {
-            // Already installed
             log_message('debug', "PackageInstaller: Module {$slug} already installed locally.");
             return true;
         }
 
-        $result = self::copyRecursive($sourceDir, $targetDir);
+        $registry = service('modules');
+        $deployed = false;
 
-        if ($result) {
-            log_message('debug', "PackageInstaller: Files copied for {$slug}. Triggering setup...");
+        try {
+            if (!self::copyRecursive($sourceDir, $targetDir)) {
+                throw new \RuntimeException("Failed to copy module files for {$slug}");
+            }
+            $deployed = true;
 
             $moduleName = ucfirst($slug);
             $moduleClass = "App\\Modules\\{$moduleName}\\Config\\Module";
             $moduleFile = $targetDir . DIRECTORY_SEPARATOR . 'Config' . DIRECTORY_SEPARATOR . 'Module.php';
 
-            log_message('debug', "PackageInstaller: Looking for file {$moduleFile}");
-
-            if (is_file($moduleFile)) {
-                require_once $moduleFile;
-                log_message('debug', "PackageInstaller: File {$moduleFile} required.");
-
-                if (class_exists($moduleClass)) {
-                    log_message('debug', "PackageInstaller: Class {$moduleClass} found. Instantiating...");
-
-                    // Manually register namespace for Autoloader and Migrations
-                    $autoloader = \Config\Services::autoloader();
-                    $namespace = "App\\Modules\\{$moduleName}";
-                    $autoloader->addNamespace($namespace, $targetDir);
-                    log_message('debug', "PackageInstaller: Namespace {$namespace} manually registered for this request.");
-
-                    $instance = new $moduleClass();
-
-                    // --- Automatic Dependency Resolution ---
-                    // $require is associative: ['depSlug' => 'versionConstraint']
-                    $dependencies = $instance->require ?? [];
-                    if (!empty($dependencies)) {
-                        $depList = implode(', ', array_keys($dependencies));
-                        log_message('info', "PackageInstaller: Module '{$slug}' requires: [{$depList}]. Resolving...");
-
-                        foreach ($dependencies as $depSlug => $versionConstraint) {
-                            $depFolder = ucfirst($depSlug);
-                            $depTarget = APPPATH . 'Modules' . DIRECTORY_SEPARATOR . $depFolder;
-
-                            if (is_dir($depTarget)) {
-                                log_message('debug', "PackageInstaller: Dependency '{$depSlug}' already installed. Skipping.");
-                                continue;
-                            }
-
-                            log_message('info', "PackageInstaller: Installing dependency '{$depSlug}' (constraint: {$versionConstraint}) for '{$slug}'.");
-
-                            $depInstalled = self::installFromLocal($depSlug);
-
-                            if ($depInstalled) {
-                                log_message('info', "PackageInstaller: Dependency '{$depSlug}' installed successfully.");
-                                // Activate the dependency in modules.json
-                                try {
-                                    $registry = service('modules');
-                                    $registry->activate($depSlug);
-                                    log_message('info', "PackageInstaller: Dependency '{$depSlug}' activated in modules.json.");
-                                } catch (\Throwable $e) {
-                                    log_message('warning', "PackageInstaller: Could not activate dependency '{$depSlug}': " . $e->getMessage());
-                                }
-                            } else {
-                                log_message('error', "PackageInstaller: FAILED to install dependency '{$depSlug}' for '{$slug}'. Source not found in local repository.");
-                            }
-                        }
-                    }
-
-                    if (method_exists($instance, 'install')) {
-                        try {
-                            log_message('debug', "PackageInstaller: Calling install() hook for {$slug}");
-                            $instance->install();
-                            log_message('debug', "PackageInstaller: install() hook completed for {$slug}");
-                        } catch (\Exception $e) {
-                            log_message('error', "PackageInstaller: Failed to run install() for {$slug}: " . $e->getMessage());
-                        }
-                    } else {
-                        log_message('debug', "PackageInstaller: Method install() not found in {$moduleClass}");
-                    }
-
-                    // Automatically run migrations if they exist
-                    log_message('debug', "PackageInstaller: Running migrations for {$namespace}");
-                    ModuleMigrationHelper::runMigrations($namespace);
-                } else {
-                    log_message('error', "PackageInstaller: Class {$moduleClass} NOT found even after requiring file.");
-                }
-            } else {
-                log_message('error', "PackageInstaller: Module config file NOT found at {$moduleFile}");
+            if (!is_file($moduleFile)) {
+                throw new \RuntimeException("Module config file not found at {$moduleFile}");
             }
-        }
 
-        return $result;
+            require_once $moduleFile;
+
+            if (!class_exists($moduleClass)) {
+                throw new \RuntimeException("Class {$moduleClass} not found in {$moduleFile}");
+            }
+
+            // Register namespace
+            $autoloader = \Config\Services::autoloader();
+            $namespace = "App\\Modules\\{$moduleName}";
+            $autoloader->addNamespace($namespace, $targetDir);
+
+            $instance = new $moduleClass();
+
+            // Resolve dependencies first
+            $dependencies = $instance->require ?? $instance->requires ?? [];
+            foreach ($dependencies as $depSlug => $versionConstraint) {
+                if (in_array(strtolower($depSlug), ['php', 'codeigniter4/framework', 'ci4'], true)) {
+                    continue;
+                }
+                $depTarget = APPPATH . 'Modules' . DIRECTORY_SEPARATOR . ucfirst($depSlug);
+                if (!is_dir($depTarget)) {
+                    log_message('info', "PackageInstaller: Auto-installing dependency '{$depSlug}' for '{$slug}'.");
+                    if (!self::installFromLocal($depSlug)) {
+                        throw new \RuntimeException("Failed to install required dependency '{$depSlug}'");
+                    }
+                }
+            }
+
+            // Register as installed
+            $registry->setStatus($slug, \Rahpt\Ci4Module\ModuleRegistry::STATUS_INSTALLED);
+
+            // Execute migrations
+            ModuleMigrationHelper::runMigrations($namespace);
+
+            // Call module install hook
+            if (method_exists($instance, 'install')) {
+                $instance->install();
+            }
+
+            // Transactional activation
+            if (!$registry->activate($slug)) {
+                throw new \RuntimeException("Module activation failed for '{$slug}'");
+            }
+
+            log_message('info', "PackageInstaller: Module '{$slug}' installed and activated successfully.");
+            return true;
+
+        } catch (\Throwable $e) {
+            log_message('error', "PackageInstaller: Installation transaction failed for {$slug}: " . $e->getMessage());
+
+            // Rollback deployed files
+            if ($deployed && is_dir($targetDir)) {
+                self::deleteRecursive($targetDir);
+            }
+
+            if (isset($registry)) {
+                $registry->quarantine($slug, "Installation failed: " . $e->getMessage());
+            }
+
+            return false;
+        }
     }
 
     /**
-     * Installs a module from a remote ZIP URL using an isolated staging boundary.
-     * Flow: download -> writable/modules/staging/<uuid> -> validate security -> verify structure -> install -> cleanup
+     * Installs a module from a remote ZIP URL using an isolated staging boundary with hash verification and rollback.
+     *
+     * @param string $url Remote package URL
+     * @param array $options ['sha256' => '...', 'publisher' => 'rahpt', 'signature' => '...']
      */
-    public static function installFromUrl(string $url): bool
+    public static function installFromUrl(string $url, array $options = []): bool
     {
         $config = config('ModuleTools');
         if (!$config->isRemoteInstallAllowed()) {
@@ -159,23 +152,36 @@ class PackageInstaller
         $tempZip = $stagingDir . 'module.zip';
         $extractDir = $stagingDir . 'extracted' . DIRECTORY_SEPARATOR;
 
+        $targetDir = null;
+        $deployed = false;
+        $slug = null;
+        $registry = service('modules');
+
         try {
             if (!is_dir($stagingDir)) {
                 mkdir($stagingDir, 0755, true);
             }
 
-            // 2. Download package to staging
+            // 2. Download package to isolated staging
             $content = file_get_contents($url);
             if (!$content) {
-                log_message('error', "PackageInstaller: Failed to download content from URL: {$url}");
-                return false;
+                throw new \RuntimeException("Failed to download package content from URL: {$url}");
             }
             file_put_contents($tempZip, $content);
 
-            // 3. Security scan of ZIP archive (bombs, path traversal, symlinks, ratios)
+            // 3. Verify SHA-256 checksum if provided
+            if (!empty($options['sha256'])) {
+                $actualHash = hash_file('sha256', $tempZip);
+                if (!hash_equals(strtolower($options['sha256']), strtolower($actualHash))) {
+                    throw new \RuntimeException("SHA-256 checksum mismatch. Expected {$options['sha256']}, got {$actualHash}");
+                }
+                log_message('info', "PackageInstaller: SHA-256 checksum verified for {$url}");
+            }
+
+            // 4. Security scan of ZIP archive (bombs, path traversal, symlinks, ratios)
             $validator->validateZipFile($tempZip);
 
-            // 4. Extract inside isolated staging
+            // 5. Extract inside isolated staging
             $zip = new \ZipArchive();
             if ($zip->open($tempZip) !== true) {
                 throw new \RuntimeException('Failed to open verified ZIP archive in staging.');
@@ -184,7 +190,7 @@ class PackageInstaller
             $zip->close();
             @unlink($tempZip);
 
-            // 5. Detect module root directory in staging
+            // 6. Detect module root directory in staging
             $moduleSourceDir = self::resolveExtractedModuleDir($extractDir);
             if (!$moduleSourceDir) {
                 throw new \RuntimeException('Staged package does not contain a valid CodeIgniter 4 module structure.');
@@ -199,12 +205,13 @@ class PackageInstaller
                 return true;
             }
 
-            // 6. Move from staging to production APPPATH/Modules
+            // 7. Atomic deployment to APPPATH/Modules
             if (!self::copyRecursive($moduleSourceDir, $targetDir)) {
-                throw new \RuntimeException("Failed to move module from staging to destination: {$targetDir}");
+                throw new \RuntimeException("Failed to deploy module from staging to destination: {$targetDir}");
             }
+            $deployed = true;
 
-            // 7. Register Autoloader, run hooks, and execute migrations
+            // 8. Register Autoloader, run hooks, and execute migrations
             $moduleClass = "App\\Modules\\{$moduleName}\\Config\\Module";
             $moduleFile = $targetDir . DIRECTORY_SEPARATOR . 'Config' . DIRECTORY_SEPARATOR . 'Module.php';
 
@@ -217,15 +224,22 @@ class PackageInstaller
 
                 if (class_exists($moduleClass)) {
                     $instance = new $moduleClass();
+
+                    // Register in installed state
+                    $registry->setStatus($slug, \Rahpt\Ci4Module\ModuleRegistry::STATUS_INSTALLED);
+
+                    // Execute migrations
+                    ModuleMigrationHelper::runMigrations($namespace);
+
+                    // Run install hook
                     if (method_exists($instance, 'install')) {
-                        try {
-                            $instance->install();
-                        } catch (\Throwable $e) {
-                            log_message('error', "PackageInstaller: Failed to run install() hook for {$slug}: " . $e->getMessage());
-                        }
+                        $instance->install();
                     }
 
-                    ModuleMigrationHelper::runMigrations($namespace);
+                    // Activate transactionally
+                    if (!$registry->activate($slug)) {
+                        throw new \RuntimeException("Failed to activate module '{$slug}'");
+                    }
                 }
             }
 
@@ -234,9 +248,19 @@ class PackageInstaller
 
         } catch (\Throwable $e) {
             log_message('error', 'PackageInstaller staging error: ' . $e->getMessage());
+
+            // Rollback on failure
+            if ($deployed && $targetDir !== null && is_dir($targetDir)) {
+                self::deleteRecursive($targetDir);
+            }
+
+            if ($slug !== null) {
+                $registry->quarantine($slug, "Installation error: " . $e->getMessage());
+            }
+
             return false;
         } finally {
-            // Clean up staging directory
+            // Clean up staging directory unconditionally
             if (is_dir($stagingDir)) {
                 self::deleteRecursive($stagingDir);
             }
