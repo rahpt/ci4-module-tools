@@ -162,9 +162,9 @@ class PackageInstaller
                 mkdir($stagingDir, 0755, true);
             }
 
-            // 2. Download package to isolated staging
-            $content = file_get_contents($url);
-            if (!$content) {
+            // 2. Download package to isolated staging using curl with per-redirect validation
+            $content = self::downloadWithRedirectValidation($url, $validator, $config);
+            if ($content === false || $content === '') {
                 throw new \RuntimeException("Failed to download package content from URL: {$url}");
             }
             file_put_contents($tempZip, $content);
@@ -353,5 +353,84 @@ class PackageInstaller
         }
 
         return @rmdir($dir);
+    }
+
+    /**
+     * Downloads content from a URL using curl, validating every redirect URL through SecurityValidator
+     * before following it. This prevents redirect-based SSRF bypasses (e.g., redirect to 169.254.x.x).
+     *
+     * @return string|false Downloaded content, or false on failure
+     */
+    private static function downloadWithRedirectValidation(
+        string $url,
+        \Rahpt\Ci4ModuleTools\Security\SecurityValidator $validator,
+        $config
+    ): string|false {
+        if (!function_exists('curl_init')) {
+            // Fallback: file_get_contents without redirect validation (limited environments)
+            log_message('warning', '[PackageInstaller] curl not available; redirect SSRF protection disabled for this download.');
+            return file_get_contents($url) ?: false;
+        }
+
+        $maxRedirects  = $config->maxRedirects ?? 3;
+        $timeout       = $config->downloadTimeout ?? 30;
+        $redirectCount = 0;
+        $currentUrl    = $url;
+        $body          = false;
+
+        while ($redirectCount <= $maxRedirects) {
+            $ch = curl_init($currentUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => false,  // manual redirect handling
+                CURLOPT_TIMEOUT        => $timeout,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_MAXREDIRS      => 0,
+                CURLOPT_USERAGENT      => 'Rahpt-ModuleInstaller/1.0',
+                CURLOPT_HEADER         => true,
+            ]);
+
+            $response   = curl_exec($ch);
+            $httpCode   = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+            curl_close($ch);
+
+            if ($response === false) {
+                return false;
+            }
+
+            $headers = substr($response, 0, $headerSize);
+            $body    = substr($response, $headerSize);
+
+            // Follow 3xx redirects
+            if ($httpCode >= 300 && $httpCode < 400) {
+                if (preg_match('/^Location:\s*(.+)$/im', $headers, $m)) {
+                    $redirectUrl = trim($m[1]);
+
+                    // Resolve relative redirect URLs
+                    if (!str_starts_with($redirectUrl, 'http')) {
+                        $parsed      = parse_url($currentUrl);
+                        $redirectUrl = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? '') . $redirectUrl;
+                    }
+
+                    // Validate the redirect target before following
+                    $redirectCount++;
+                    $validator->validateRedirectUrl($currentUrl, $redirectUrl, $redirectCount);
+                    $currentUrl = $redirectUrl;
+                    continue;
+                }
+            }
+
+            // Non-redirect response
+            if ($httpCode >= 200 && $httpCode < 300) {
+                return $body;
+            }
+
+            log_message('error', "[PackageInstaller] HTTP {$httpCode} downloading: {$currentUrl}");
+            return false;
+        }
+
+        throw new \RuntimeException("Too many redirects downloading: {$url}");
     }
 }

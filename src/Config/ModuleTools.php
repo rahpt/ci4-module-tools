@@ -87,6 +87,16 @@ class ModuleTools extends BaseConfig
     ];
 
     /**
+     * Anti-ZIP-Slip: Maximum filename length for entries within the archive.
+     */
+    public int $maxFilenameLength = 255;
+
+    /**
+     * Anti-ZIP-Slip: Maximum directory nesting depth within the archive.
+     */
+    public int $maxDirectoryDepth = 10;
+
+    /**
      * Get the absolute path to local repository
      */
     public function getLocalRepositoryPath(): string
