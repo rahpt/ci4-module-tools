@@ -53,9 +53,9 @@ class ModuleTools extends BaseConfig
     public bool $debugMode = false;
 
     /**
-     * Allow installation from URLs
+     * Allow installation from URLs (disabled by default for production security)
      */
-    public bool $allowRemoteInstall = true;
+    public bool $allowRemoteInstall = false;
 
     /**
      * Allowed URL schemes for remote installation

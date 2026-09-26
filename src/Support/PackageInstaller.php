@@ -2,8 +2,11 @@
 
 namespace Rahpt\Ci4ModuleTools\Support;
 
+use Rahpt\Ci4ModuleTools\Security\SecurityValidator;
+
 /**
  * PackageInstaller - Handles downloading and extracting modules from remote repositories or local dirs.
+ * Enforces secure staging, validation, and atomic deployment.
  */
 class PackageInstaller
 {
@@ -12,7 +15,7 @@ class PackageInstaller
      */
     public static function install(string $source): bool
     {
-        // 1. If it's a URL, use existing logic
+        // 1. If it's a URL, use remote staging pipeline
         if (filter_var($source, FILTER_VALIDATE_URL)) {
             return self::installFromUrl($source);
         }
@@ -130,7 +133,8 @@ class PackageInstaller
     }
 
     /**
-     * Installs a module from a remote ZIP URL.
+     * Installs a module from a remote ZIP URL using an isolated staging boundary.
+     * Flow: download -> writable/modules/staging/<uuid> -> validate security -> verify structure -> install -> cleanup
      */
     public static function installFromUrl(string $url): bool
     {
@@ -140,74 +144,146 @@ class PackageInstaller
             return false;
         }
 
-        $tempFile = WRITEPATH . 'temp_module_' . time() . '.zip';
+        $validator = new SecurityValidator($config);
+
+        // 1. SSRF and URL validation
+        try {
+            $validator->validateUrl($url);
+        } catch (\Throwable $e) {
+            log_message('error', "PackageInstaller: Security validation failed for URL {$url}: " . $e->getMessage());
+            return false;
+        }
+
+        $stagingId = bin2hex(random_bytes(8));
+        $stagingDir = WRITEPATH . 'modules' . DIRECTORY_SEPARATOR . 'staging' . DIRECTORY_SEPARATOR . $stagingId . DIRECTORY_SEPARATOR;
+        $tempZip = $stagingDir . 'module.zip';
+        $extractDir = $stagingDir . 'extracted' . DIRECTORY_SEPARATOR;
 
         try {
+            if (!is_dir($stagingDir)) {
+                mkdir($stagingDir, 0755, true);
+            }
+
+            // 2. Download package to staging
             $content = file_get_contents($url);
             if (!$content) {
                 log_message('error', "PackageInstaller: Failed to download content from URL: {$url}");
                 return false;
             }
-            file_put_contents($tempFile, $content);
+            file_put_contents($tempZip, $content);
 
+            // 3. Security scan of ZIP archive (bombs, path traversal, symlinks, ratios)
+            $validator->validateZipFile($tempZip);
+
+            // 4. Extract inside isolated staging
             $zip = new \ZipArchive();
-            if ($zip->open($tempFile) === TRUE) {
-                $extractPath = APPPATH . 'Modules' . DIRECTORY_SEPARATOR;
-                $zip->extractTo($extractPath);
-                $zip->close();
-                @unlink($tempFile);
+            if ($zip->open($tempZip) !== true) {
+                throw new \RuntimeException('Failed to open verified ZIP archive in staging.');
+            }
+            $zip->extractTo($extractDir);
+            $zip->close();
+            @unlink($tempZip);
 
-                // Try to trigger install() for the newly installed module
-                // We'll scan for the most recently modified directory in App/Modules
-                $dirs = array_filter(glob($extractPath . '*'), 'is_dir');
-                if (!empty($dirs)) {
-                    array_multisort(array_map('filemtime', $dirs), SORT_DESC, $dirs);
-                    $newestDir = $dirs[0];
-                    $slug = basename($newestDir);
+            // 5. Detect module root directory in staging
+            $moduleSourceDir = self::resolveExtractedModuleDir($extractDir);
+            if (!$moduleSourceDir) {
+                throw new \RuntimeException('Staged package does not contain a valid CodeIgniter 4 module structure.');
+            }
 
-                    // Check if module is already installed (e.g., if a dependency was already installed)
-                    if (is_dir(APPPATH . 'Modules' . DIRECTORY_SEPARATOR . ucfirst($slug))) {
-                        log_message('debug', "PackageInstaller: Module {$slug} already installed remotely (likely as a dependency).");
-                        return true;
-                    }
+            $slug = self::detectModuleSlug($moduleSourceDir);
+            $moduleName = ucfirst($slug);
+            $targetDir = APPPATH . 'Modules' . DIRECTORY_SEPARATOR . $moduleName;
 
-                    $moduleName = ucfirst($slug);
-                    $moduleClass = "App\\Modules\\{$moduleName}\\Config\\Module";
-                    $moduleFile = $newestDir . DIRECTORY_SEPARATOR . 'Config' . DIRECTORY_SEPARATOR . 'Module.php';
-
-                    if (is_file($moduleFile)) {
-                        require_once $moduleFile;
-
-                        // Manually register namespace for Autoloader and Migrations
-                        $autoloader = \Config\Services::autoloader();
-                        $namespace = "App\\Modules\\{$moduleName}";
-                        $autoloader->addNamespace($namespace, $newestDir);
-
-                        if (class_exists($moduleClass)) {
-                            $instance = new $moduleClass();
-                            if (method_exists($instance, 'install')) {
-                                try {
-                                    $instance->install();
-                                } catch (\Exception $e) {
-                                    log_message('error', "PackageInstaller: Failed to run install() for {$slug}: " . $e->getMessage());
-                                }
-                            }
-
-                            // Automatically run migrations if they exist
-                            ModuleMigrationHelper::runMigrations($namespace);
-                        }
-                    }
-                }
-
+            if (is_dir($targetDir)) {
+                log_message('warning', "PackageInstaller: Module '{$slug}' is already installed.");
                 return true;
             }
-        } catch (\Exception $e) {
-            @unlink($tempFile);
-            log_message('error', 'PackageInstaller: ' . $e->getMessage());
+
+            // 6. Move from staging to production APPPATH/Modules
+            if (!self::copyRecursive($moduleSourceDir, $targetDir)) {
+                throw new \RuntimeException("Failed to move module from staging to destination: {$targetDir}");
+            }
+
+            // 7. Register Autoloader, run hooks, and execute migrations
+            $moduleClass = "App\\Modules\\{$moduleName}\\Config\\Module";
+            $moduleFile = $targetDir . DIRECTORY_SEPARATOR . 'Config' . DIRECTORY_SEPARATOR . 'Module.php';
+
+            if (is_file($moduleFile)) {
+                require_once $moduleFile;
+
+                $autoloader = \Config\Services::autoloader();
+                $namespace = "App\\Modules\\{$moduleName}";
+                $autoloader->addNamespace($namespace, $targetDir);
+
+                if (class_exists($moduleClass)) {
+                    $instance = new $moduleClass();
+                    if (method_exists($instance, 'install')) {
+                        try {
+                            $instance->install();
+                        } catch (\Throwable $e) {
+                            log_message('error', "PackageInstaller: Failed to run install() hook for {$slug}: " . $e->getMessage());
+                        }
+                    }
+
+                    ModuleMigrationHelper::runMigrations($namespace);
+                }
+            }
+
+            log_message('info', "PackageInstaller: Module '{$slug}' installed successfully from staging.");
+            return true;
+
+        } catch (\Throwable $e) {
+            log_message('error', 'PackageInstaller staging error: ' . $e->getMessage());
             return false;
+        } finally {
+            // Clean up staging directory
+            if (is_dir($stagingDir)) {
+                self::deleteRecursive($stagingDir);
+            }
+        }
+    }
+
+    /**
+     * Resolves the actual module root directory inside the extracted staging folder.
+     */
+    protected static function resolveExtractedModuleDir(string $extractDir): ?string
+    {
+        // Direct module structure check
+        if (is_file($extractDir . 'Config' . DIRECTORY_SEPARATOR . 'Module.php') || is_file($extractDir . 'module.json')) {
+            return rtrim($extractDir, '\\/');
         }
 
-        return false;
+        // Check if package was wrapped in a single root folder
+        $items = array_diff(scandir($extractDir) ?: [], ['.', '..']);
+        if (count($items) === 1) {
+            $singleItem = $extractDir . reset($items);
+            if (is_dir($singleItem)) {
+                if (is_file($singleItem . DIRECTORY_SEPARATOR . 'Config' . DIRECTORY_SEPARATOR . 'Module.php') ||
+                    is_file($singleItem . DIRECTORY_SEPARATOR . 'module.json')) {
+                    return $singleItem;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Detects slug from module.json or directory name.
+     */
+    protected static function detectModuleSlug(string $moduleDir): string
+    {
+        $manifest = $moduleDir . DIRECTORY_SEPARATOR . 'module.json';
+        if (is_file($manifest)) {
+            try {
+                $data = json_decode(file_get_contents($manifest), true, 512, JSON_THROW_ON_ERROR);
+                if (!empty($data['slug'])) {
+                    return strtolower($data['slug']);
+                }
+            } catch (\Throwable) {}
+        }
+
+        return strtolower(basename($moduleDir));
     }
 
     private static function copyRecursive(string $src, string $dst): bool
@@ -217,16 +293,41 @@ class PackageInstaller
         }
 
         $dir = opendir($src);
+        if (!$dir) {
+            return false;
+        }
+
         while (false !== ($file = readdir($dir))) {
             if (($file != '.') && ($file != '..')) {
-                if (is_dir($src . DIRECTORY_SEPARATOR . $file)) {
-                    self::copyRecursive($src . DIRECTORY_SEPARATOR . $file, $dst . DIRECTORY_SEPARATOR . $file);
+                $srcPath = $src . DIRECTORY_SEPARATOR . $file;
+                $dstPath = $dst . DIRECTORY_SEPARATOR . $file;
+
+                if (is_dir($srcPath)) {
+                    self::copyRecursive($srcPath, $dstPath);
                 } else {
-                    copy($src . DIRECTORY_SEPARATOR . $file, $dst . DIRECTORY_SEPARATOR . $file);
+                    copy($srcPath, $dstPath);
                 }
             }
         }
         closedir($dir);
         return true;
+    }
+
+    /**
+     * Safely deletes a directory and all of its contents.
+     */
+    private static function deleteRecursive(string $dir): bool
+    {
+        if (!is_dir($dir)) {
+            return true;
+        }
+
+        $files = array_diff(scandir($dir) ?: [], ['.', '..']);
+        foreach ($files as $file) {
+            $path = $dir . DIRECTORY_SEPARATOR . $file;
+            is_dir($path) ? self::deleteRecursive($path) : @unlink($path);
+        }
+
+        return @rmdir($dir);
     }
 }
