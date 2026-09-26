@@ -18,6 +18,26 @@ class ModuleTools extends BaseConfig
     public int $maxZipSize = 52428800;
 
     /**
+     * Anti-ZIP-bomb: Maximum number of files permitted in a module archive
+     */
+    public int $maxZipFiles = 1500;
+
+    /**
+     * Anti-ZIP-bomb: Maximum total uncompressed size in bytes (100MB default)
+     */
+    public int $maxUncompressedSize = 104857600;
+
+    /**
+     * Anti-ZIP-bomb: Maximum compression ratio allowed
+     */
+    public int $maxCompressionRatio = 50;
+
+    /**
+     * Allowed remote network ports for module downloads
+     */
+    public array $allowedPorts = [80, 443];
+
+    /**
      * Download timeout in seconds
      */
     public int $downloadTimeout = 30;

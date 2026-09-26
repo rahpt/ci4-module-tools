@@ -37,8 +37,14 @@ class SecurityValidator
         }
 
         // Check allowed schemes
-        if (!in_array(strtolower($parsed['scheme']), $this->config->allowedSchemes)) {
+        if (!in_array(strtolower($parsed['scheme']), $this->config->allowedSchemes, true)) {
             throw new Exception('URL scheme not allowed. Only ' . implode(', ', $this->config->allowedSchemes) . ' are permitted');
+        }
+
+        // Check allowed ports
+        $port = $parsed['port'] ?? (strtolower($parsed['scheme']) === 'https' ? 443 : 80);
+        if (!in_array($port, $this->config->allowedPorts, true)) {
+            throw new Exception("Connection port [{$port}] is not allowed for module download");
         }
 
         // Check file extension
@@ -87,7 +93,7 @@ class SecurityValidator
     }
 
     /**
-     * Validate ZIP file structure and content
+     * Validate ZIP file structure and content against ZIP bombs, traversal, and required structure
      * 
      * @throws Exception if ZIP is not safe
      */
@@ -99,8 +105,8 @@ class SecurityValidator
         }
 
         // Check file size
-        $size = filesize($zipPath);
-        if ($size > $this->config->maxZipSize) {
+        $compressedSize = filesize($zipPath);
+        if ($compressedSize > $this->config->maxZipSize) {
             throw new Exception('ZIP file exceeds maximum allowed size of ' . 
                 $this->formatBytes($this->config->maxZipSize));
         }
@@ -114,10 +120,33 @@ class SecurityValidator
         }
 
         try {
-            // Check for path traversal attacks
+            // Anti-ZIP-Bomb: Check file count limit
+            if ($zip->numFiles > $this->config->maxZipFiles) {
+                throw new Exception("ZIP archive contains {$zip->numFiles} files, exceeding limit of {$this->config->maxZipFiles}");
+            }
+
+            // Anti-ZIP-Bomb: Check uncompressed size and compression ratio
+            $totalUncompressedSize = 0;
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $stat = $zip->statIndex($i);
+                if ($stat) {
+                    $totalUncompressedSize += $stat['size'];
+                }
+            }
+
+            if ($totalUncompressedSize > $this->config->maxUncompressedSize) {
+                throw new Exception('ZIP total uncompressed size exceeds limit of ' . $this->formatBytes($this->config->maxUncompressedSize));
+            }
+
+            $ratio = $compressedSize > 0 ? ($totalUncompressedSize / $compressedSize) : 1;
+            if ($ratio > $this->config->maxCompressionRatio) {
+                throw new Exception("Suspicious compression ratio ({$ratio}:1) exceeds limit of {$this->config->maxCompressionRatio}:1 (possible ZIP bomb)");
+            }
+
+            // Check for path traversal attacks and symlinks
             $this->checkZipPathTraversal($zip);
             
-            // Validate required structure
+            // Validate required structure (Config/Module.php or module.json)
             $this->checkRequiredStructure($zip);
             
             return true;
